@@ -1,0 +1,40 @@
+# ============================================================
+# FedTrap — Python Dependencies
+# ============================================================
+# Install:  pip install -r requirements.txt
+
+# --- Core ML (training + inference) ---
+torch>=2.0.0
+torchvision>=0.15.0
+Pillow>=9.0
+opencv-python>=4.7
+
+# --- Data science / evaluation ---
+numpy>=1.24
+scikit-learn>=1.2
+matplotlib>=3.7
+seaborn>=0.12
+pandas>=2.0
+
+# --- Configuration ---
+PyYAML>=6.0
+
+# --- Federated Learning ---
+flwr>=1.5
+grpcio>=1.50
+
+# --- Dataset download ---
+kagglehub>=0.2
+
+# --- YOLO detection (Phase C/D) ---
+ultralytics>=8.0
+
+# --- ONNX export (optional edge deployment) ---
+onnx>=1.14
+onnxruntime>=1.15
+
+# --- Dashboard ---
+flask>=3.0
+
+# --- Testing ---
+pytest>=7.0

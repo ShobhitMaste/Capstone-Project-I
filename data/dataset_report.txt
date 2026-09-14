@@ -1,0 +1,7 @@
+Class         | Total | Train | Val  | Test 
+--------------+-------+-------+------+-----
+beetle        | 10    | 7     | 1    | 2    
+butterfly     | 10    | 7     | 2    | 1    
+grasshopper   | 10    | 7     | 1    | 2    
+honeybee      | 10    | 7     | 1    | 2    
+moth          | 10    | 7     | 2    | 1    

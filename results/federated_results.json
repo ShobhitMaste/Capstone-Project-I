@@ -1,0 +1,28 @@
+{
+  "final": {
+    "Method": "Federated (FedAvg)",
+    "Accuracy": 0.125,
+    "Macro-F1": 0.0667,
+    "Communication (bytes)": 204960,
+    "Rounds": 2,
+    "F1_grasshopper": 0.0,
+    "F1_beetle": 0.0,
+    "F1_moth": 0.0,
+    "F1_honeybee": 0.0,
+    "F1_butterfly": 0.3333
+  },
+  "per_round": [
+    {
+      "round": 1,
+      "accuracy": 0.125,
+      "macro_f1": 0.0667,
+      "cumulative_bytes": 102480
+    },
+    {
+      "round": 2,
+      "accuracy": 0.125,
+      "macro_f1": 0.0667,
+      "cumulative_bytes": 204960
+    }
+  ]
+}

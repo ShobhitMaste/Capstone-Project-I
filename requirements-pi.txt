@@ -1,0 +1,30 @@
+# ============================================================
+# FedTrap — Raspberry Pi Dependencies
+# ============================================================
+# Install on Pi:  pip install -r requirements-pi.txt
+# Note: install PyTorch for ARM separately via official wheel.
+
+# --- Core inference ---
+torch
+torchvision
+Pillow>=9.0
+opencv-python-headless>=4.7
+numpy>=1.24
+
+# --- Configuration ---
+PyYAML>=6.0
+
+# --- Federated Learning ---
+flwr>=1.5
+grpcio>=1.50
+
+# --- Pi hardware ---
+RPi.GPIO>=0.7
+picamera2>=0.3
+pigpio>=1.78
+
+# --- ONNX inference (optional) ---
+onnxruntime>=1.15
+
+# --- Logging ---
+# (stdlib csv + sqlite3 — no extra deps)

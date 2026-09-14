@@ -1,0 +1,14 @@
+[
+  {
+    "Method": "Centralized",
+    "Accuracy": 0.0,
+    "Macro-F1": 0.0,
+    "Communication (bytes)": 0,
+    "Rounds": 0,
+    "F1_grasshopper": 0.0,
+    "F1_beetle": 0.0,
+    "F1_moth": 0.0,
+    "F1_honeybee": 0.0,
+    "F1_butterfly": 0.0
+  }
+]

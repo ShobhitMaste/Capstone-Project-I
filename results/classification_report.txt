@@ -1,0 +1,11 @@
+              precision    recall  f1-score   support
+
+      beetle     0.9595    0.9467    0.9530       150
+   butterfly     0.9586    0.9267    0.9424       150
+ grasshopper     0.9231    0.9600    0.9412       150
+    honeybee     1.0000    1.0000    1.0000       149
+        moth     0.9801    0.9867    0.9834       150
+
+    accuracy                         0.9640       749
+   macro avg     0.9643    0.9640    0.9640       749
+weighted avg     0.9642    0.9640    0.9639       749

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FedTrap — Monitoring Dashboard</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --card: #1a1d28;
+            --accent: #4f8cff;
+            --accent2: #36d399;
+            --danger: #f87272;
+            --warning: #fbbd23;
+            --text: #e4e6eb;
+            --text-dim: #8b8fa3;
+            --border: #2a2d3a;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        header {
+            background: linear-gradient(135deg, #1a1d28 0%, #252836 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-online  { background: rgba(54,211,153,0.15); color: var(--accent2); }
+        .status-offline { background: rgba(248,114,114,0.15); color: var(--danger); }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .card h2 {
+            font-size: 1rem;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .metric:last-child { border-bottom: none; }
+        .metric-label { color: var(--text-dim); font-size: 0.9rem; }
+        .metric-value { font-weight: 600; font-size: 1.1rem; }
+        .action-capture { color: var(--danger); }
+        .action-release { color: var(--accent2); }
+        .action-none    { color: var(--text-dim); }
+        .fl-section {
+            grid-column: 1 / -1;
+        }
+        .fl-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+        .fl-stat {
+            text-align: center;
+            padding: 1rem;
+            background: rgba(79,140,255,0.05);
+            border-radius: 8px;
+        }
+        .fl-stat .value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .fl-stat .label {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+        .events-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .events-table th {
+            text-align: left;
+            color: var(--text-dim);
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .events-table td {
+            padding: 0.5rem;
+            border-bottom: 1px solid rgba(42,45,58,0.5);
+        }
+        .events-section { grid-column: 1 / -1; }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+            .fl-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🪲 FedTrap Dashboard</h1>
+        <span id="connection-badge" class="status-badge status-offline">Connecting...</span>
+    </header>
+
+    <div class="grid">
+        <!-- Trap A -->
+        <div class="card" id="trap-a-card">
+            <h2>🔧 Trap A (Server + Client)</h2>
+            <div class="metric">
+                <span class="metric-label">Status</span>
+                <span class="metric-value" id="trap-a-status">OFFLINE</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Prediction</span>
+                <span class="metric-value" id="trap-a-prediction">—</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Confidence</span>
+                <span class="metric-value" id="trap-a-confidence">—</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Action</span>
+                <span class="metric-value" id="trap-a-action">—</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Servo</span>
+                <span class="metric-value" id="trap-a-servo">HOME</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">FPS</span>
+                <span class="metric-value" id="trap-a-fps">0.0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Latency</span>
+                <span class="metric-value" id="trap-a-latency">— ms</span>
+            </div>
+        </div>
+
+        <!-- Trap B -->
+        <div class="card" id="trap-b-card">
+            <h2>🔧 Trap B (Client)</h2>
+            <div class="metric">
+                <span class="metric-label">Status</span>
+                <span class="metric-value" id="trap-b-status">OFFLINE</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Prediction</span>
+                <span class="metric-value" id="trap-b-prediction">—</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Confidence</span>
+                <span class="metric-value" id="trap-b-confidence">—</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Action</span>
+                <span class="metric-value" id="trap-b-action">—</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Servo</span>
+                <span class="metric-value" id="trap-b-servo">HOME</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">FPS</span>
+                <span class="metric-value" id="trap-b-fps">0.0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Latency</span>
+                <span class="metric-value" id="trap-b-latency">— ms</span>
+            </div>
+        </div>
+
+        <!-- FL Status -->
+        <div class="card fl-section">
+            <h2>🔗 Federated Learning</h2>
+            <div class="fl-grid">
+                <div class="fl-stat">
+                    <div class="value" id="fl-round">0 / 10</div>
+                    <div class="label">Round</div>
+                </div>
+                <div class="fl-stat">
+                    <div class="value" id="fl-method">FedAvg</div>
+                    <div class="label">Method</div>
+                </div>
+                <div class="fl-stat">
+                    <div class="value" id="fl-accuracy">—</div>
+                    <div class="label">Global Accuracy</div>
+                </div>
+                <div class="fl-stat">
+                    <div class="value" id="fl-comm">0 KB</div>
+                    <div class="label">Communication</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Events -->
+        <div class="card events-section">
+            <h2>📋 Recent Events</h2>
+            <table class="events-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Trap</th>
+                        <th>Class</th>
+                        <th>Confidence</th>
+                        <th>Decision</th>
+                        <th>Action</th>
+                        <th>Latency</th>
+                    </tr>
+                </thead>
+                <tbody id="events-body">
+                    <tr><td colspan="7" style="color: var(--text-dim); text-align: center;">No events yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh every 2 seconds
+        async function fetchStatus() {
+            try {
+                const resp = await fetch('/api/status');
+                if (!resp.ok) throw new Error('API error');
+                const data = await resp.json();
+                updateUI(data);
+                document.getElementById('connection-badge').textContent = 'Connected';
+                document.getElementById('connection-badge').className = 'status-badge status-online';
+            } catch (e) {
+                document.getElementById('connection-badge').textContent = 'Disconnected';
+                document.getElementById('connection-badge').className = 'status-badge status-offline';
+            }
+        }
+
+        function updateUI(data) {
+            ['trap_a', 'trap_b'].forEach(id => {
+                const t = data.traps[id];
+                const prefix = id.replace('_', '-');
+                document.getElementById(`${prefix}-status`).textContent = t.status;
+                document.getElementById(`${prefix}-prediction`).textContent = t.last_prediction || '—';
+                document.getElementById(`${prefix}-confidence`).textContent =
+                    t.confidence ? (t.confidence * 100).toFixed(1) + '%' : '—';
+
+                const actionEl = document.getElementById(`${prefix}-action`);
+                actionEl.textContent = t.action;
+                actionEl.className = 'metric-value action-' + (t.action || 'none').toLowerCase();
+
+                document.getElementById(`${prefix}-servo`).textContent = t.servo_state;
+                document.getElementById(`${prefix}-fps`).textContent = (t.fps || 0).toFixed(1);
+                document.getElementById(`${prefix}-latency`).textContent =
+                    (t.inference_latency_ms || 0).toFixed(1) + ' ms';
+            });
+
+            const fl = data.fl_status;
+            document.getElementById('fl-round').textContent = `${fl.current_round} / ${fl.total_rounds}`;
+            document.getElementById('fl-method').textContent = fl.method.toUpperCase();
+            document.getElementById('fl-accuracy').textContent =
+                fl.global_accuracy ? (fl.global_accuracy * 100).toFixed(1) + '%' : '—';
+            document.getElementById('fl-comm').textContent =
+                (fl.communication_bytes / 1024).toFixed(1) + ' KB';
+        }
+
+        setInterval(fetchStatus, 2000);
+        fetchStatus();
+    </script>
+</body>
+</html>

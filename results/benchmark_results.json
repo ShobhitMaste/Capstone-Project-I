@@ -1,0 +1,23 @@
+{
+    "platform": "DESKTOP",
+    "device": "cpu",
+    "iterations": 5,
+    "preprocessing_ms": {
+        "mean": 1.3254642486572266,
+        "std": 0.1404890940225265
+    },
+    "inference_ms": {
+        "mean": 22.161436080932617,
+        "std": 1.9525673340683474
+    },
+    "postprocessing_ms": {
+        "mean": 0.07524490356445312,
+        "std": 0.013137361305906895
+    },
+    "total_ms": {
+        "mean": 23.562145233154297
+    },
+    "fps": 42.4409573111747,
+    "memory_mb": 320.64453125,
+    "gpu_memory_mb": null
+}

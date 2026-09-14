@@ -1,0 +1,26 @@
+[
+  {
+    "Method": "Local (Client A)",
+    "Accuracy": 0.25,
+    "Macro-F1": 0.1467,
+    "Communication (bytes)": 0,
+    "Rounds": 0,
+    "F1_grasshopper": 0.3333,
+    "F1_beetle": 0.0,
+    "F1_moth": 0.4,
+    "F1_honeybee": 0.0,
+    "F1_butterfly": 0.0
+  },
+  {
+    "Method": "Local (Client B)",
+    "Accuracy": 0.375,
+    "Macro-F1": 0.1943,
+    "Communication (bytes)": 0,
+    "Rounds": 0,
+    "F1_grasshopper": 0.0,
+    "F1_beetle": 0.0,
+    "F1_moth": 0.4,
+    "F1_honeybee": 0.5714,
+    "F1_butterfly": 0.0
+  }
+]
