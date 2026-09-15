@@ -76,11 +76,18 @@ def main():
                 # Classify
                 t0 = time.time()
                 # OpenCV uses BGR, we convert to RGB for PIL inside preprocess (wait, predict takes BGR image or PIL?)
-                # We can convert numpy array to PIL Image or pass directly if predict handles it
-                # InsectClassifier preprocess: if isinstance(image, str): Image.open
-                # Better convert array to PIL Image
+                # Find largest contour to crop the insect
+                c = max(contours, key=cv2.contourArea)
+                x, y, w, h = cv2.boundingRect(c)
+                
+                # Add a small 20px padding around the insect
+                pad = 20
+                y1, y2 = max(0, y - pad), min(frame.shape[0], y + h + pad)
+                x1, x2 = max(0, x - pad), min(frame.shape[1], x + w + pad)
+                cropped_insect = frame[y1:y2, x1:x2]
+                
                 from PIL import Image
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                rgb_frame = cv2.cvtColor(cropped_insect, cv2.COLOR_BGR2RGB)
                 pil_img = Image.fromarray(rgb_frame)
                 
                 pred = classifier.predict(pil_img)
@@ -141,8 +148,13 @@ def main():
                 cv2.putText(display_frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                 
                 cv2.imshow("Camera Inference", display_frame)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
+                
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
                     break
+                elif key == ord('c'):
+                    print("Recalibrating background...")
+                    motion_det.update_background(frame)
                     
     except KeyboardInterrupt:
         print("\nInterrupted by user.")

@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
-║  FedTrap — Cell 2: Training + Evaluation + FL Comparison     ║
+║  FedTrap — Cell 2: EfficientNet-B0 Training + FL Comparison  ║
 ║  Paste this into Kaggle Notebook Cell #2                     ║
 ║  (Run Cell 1 first!)                                         ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -19,7 +19,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
+from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
 from PIL import Image
 from sklearn.metrics import (
     classification_report, confusion_matrix,
@@ -38,7 +38,7 @@ SEED = 42
 IMG_SIZE = 224
 BATCH_SIZE = 32
 FREEZE_EPOCHS = 10       # Phase 1: train classifier head only
-FINETUNE_EPOCHS = 20     # Phase 2: unfreeze top-4 backbone blocks
+FINETUNE_EPOCHS = 20     # Phase 2: unfreeze top layers
 TOTAL_EPOCHS = FREEZE_EPOCHS + FINETUNE_EPOCHS
 LR = 0.001
 WEIGHT_DECAY = 1e-4
@@ -61,43 +61,33 @@ def set_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
 set_seed(SEED)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device}")
-if torch.cuda.is_available():
-    print(f"GPU: {torch.cuda.get_device_name(0)}")
+print(f"  Device: {device}")
 
 # ============================================================
-# 1. Load split metadata from Cell 1
+# 1. Load Split Metadata (from Cell 1)
 # ============================================================
 print("\n" + "=" * 60)
-print("LOADING DATASET FROM CELL 1")
+print("LOADING DATASET SPLIT FROM CELL 1")
 print("=" * 60)
 
-meta_path = WORK_DIR / "data" / "split_metadata.json"
-mapping_path = WORK_DIR / "data" / "class_mapping.json"
-
-assert meta_path.exists(), "❌ split_metadata.json not found! Run Cell 1 first."
-assert mapping_path.exists(), "❌ class_mapping.json not found! Run Cell 1 first."
-
-with open(meta_path) as f:
+with open(WORK_DIR / "data" / "split_metadata.json") as f:
     split_metadata = json.load(f)
-with open(mapping_path) as f:
+
+with open(WORK_DIR / "data" / "class_mapping.json") as f:
     class_info = json.load(f)
 
 classes = class_info["classes"]
-class_to_idx = class_info["class_to_idx"]
-NUM_CLASSES = len(classes)
+NUM_CLASSES = class_info["num_classes"]
 
-train_paths = split_metadata["train"]["images"]
+train_paths  = split_metadata["train"]["images"]
 train_labels = split_metadata["train"]["labels"]
-val_paths = split_metadata["val"]["images"]
-val_labels = split_metadata["val"]["labels"]
-test_paths = split_metadata["test"]["images"]
-test_labels = split_metadata["test"]["labels"]
+val_paths    = split_metadata["val"]["images"]
+val_labels   = split_metadata["val"]["labels"]
+test_paths   = split_metadata["test"]["images"]
+test_labels  = split_metadata["test"]["labels"]
 
 print(f"  Classes ({NUM_CLASSES}): {classes}")
 print(f"  Train: {len(train_paths)} | Val: {len(val_paths)} | Test: {len(test_paths)}")
@@ -143,20 +133,25 @@ class InsectDataset(Dataset):
             image = self.transform(image)
         return image, self.labels[idx]
 
-def create_mobilenetv2(num_classes=5, pretrained=True):
-    weights = MobileNet_V2_Weights.DEFAULT if pretrained else None
-    model = mobilenet_v2(weights=weights)
+def create_efficientnet_b0(num_classes, pretrained=True):
+    """Create EfficientNet-B0 with custom classifier head."""
+    weights = EfficientNet_B0_Weights.DEFAULT if pretrained else None
+    model = efficientnet_b0(weights=weights)
+    # EfficientNet-B0 classifier: Sequential(Dropout, Linear(1280, 1000))
+    in_features = model.classifier[1].in_features  # 1280
     model.classifier = nn.Sequential(
         nn.Dropout(0.2),
-        nn.Linear(model.last_channel, num_classes)
+        nn.Linear(in_features, num_classes)
     )
     return model
 
 def freeze_backbone(model):
+    """Freeze all feature extraction layers."""
     for param in model.features.parameters():
         param.requires_grad = False
 
-def unfreeze_top_layers(model, n=4):
+def unfreeze_top_layers(model, n=3):
+    """Unfreeze the last n blocks of the EfficientNet backbone."""
     blocks = list(model.features.children())
     start_idx = max(0, len(blocks) - n)
     for i in range(start_idx, len(blocks)):
@@ -218,10 +213,10 @@ def evaluate_model(model, loader, criterion):
 # 5. Training
 # ============================================================
 print("\n" + "=" * 60)
-print("PHASE 1: TRAINING")
+print("PHASE 1: TRAINING EfficientNet-B0")
 print("=" * 60)
 
-model = create_mobilenetv2(num_classes=NUM_CLASSES, pretrained=True).to(device)
+model = create_efficientnet_b0(num_classes=NUM_CLASSES, pretrained=True).to(device)
 
 # Class weights for imbalanced data
 label_counts = np.bincount(train_labels, minlength=NUM_CLASSES).astype(np.float32)
@@ -250,27 +245,28 @@ train_losses, val_losses = [], []
 train_accs, val_accs = [], []
 
 for epoch in range(1, FREEZE_EPOCHS + 1):
-    tr_loss, tr_acc = train_one_epoch(model, train_loader, criterion, optimizer)
-    val_loss, val_acc, _, _ = evaluate_model(model, val_loader, criterion)
+    t_loss, t_acc = train_one_epoch(model, train_loader, criterion, optimizer)
+    v_loss, v_acc, _, _ = evaluate_model(model, val_loader, criterion)
     scheduler.step()
 
-    train_losses.append(tr_loss)
-    val_losses.append(val_loss)
-    train_accs.append(tr_acc)
-    val_accs.append(val_acc)
+    train_losses.append(t_loss)
+    val_losses.append(v_loss)
+    train_accs.append(t_acc)
+    val_accs.append(v_acc)
 
-    print(f"  Epoch [{epoch:2d}/{TOTAL_EPOCHS}] Phase 1 | "
-          f"Train Loss: {tr_loss:.4f} Acc: {tr_acc:.4f} | "
-          f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}")
-
-    if val_acc > best_val_acc:
-        best_val_acc = val_acc
+    tag = ""
+    if v_acc > best_val_acc:
+        best_val_acc = v_acc
         torch.save(model.state_dict(), str(MODELS_DIR / "classifier_best.pt"))
-        print(f"    → Best model saved (val_acc={val_acc:.4f})")
+        tag = " ★ best"
+
+    print(f"  Epoch {epoch:2d}/{FREEZE_EPOCHS} | "
+          f"Train: {t_loss:.4f} / {t_acc:.4f} | "
+          f"Val: {v_loss:.4f} / {v_acc:.4f}{tag}")
 
 # --- Phase 2: Fine-tune top layers ---
-print(f"\n--- Phase 2: Fine-tuning Top-4 Backbone Blocks ---")
-unfreeze_top_layers(model, n=4)
+print(f"\n--- Phase 2: Fine-tuning (unfreeze top-3 blocks) ---")
+unfreeze_top_layers(model, n=3)
 trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"  Trainable parameters: {trainable:,}")
 
@@ -279,23 +275,24 @@ optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),
 scheduler = CosineAnnealingLR(optimizer, T_max=FINETUNE_EPOCHS)
 
 for epoch in range(FREEZE_EPOCHS + 1, TOTAL_EPOCHS + 1):
-    tr_loss, tr_acc = train_one_epoch(model, train_loader, criterion, optimizer)
-    val_loss, val_acc, _, _ = evaluate_model(model, val_loader, criterion)
+    t_loss, t_acc = train_one_epoch(model, train_loader, criterion, optimizer)
+    v_loss, v_acc, _, _ = evaluate_model(model, val_loader, criterion)
     scheduler.step()
 
-    train_losses.append(tr_loss)
-    val_losses.append(val_loss)
-    train_accs.append(tr_acc)
-    val_accs.append(val_acc)
+    train_losses.append(t_loss)
+    val_losses.append(v_loss)
+    train_accs.append(t_acc)
+    val_accs.append(v_acc)
 
-    print(f"  Epoch [{epoch:2d}/{TOTAL_EPOCHS}] Phase 2 | "
-          f"Train Loss: {tr_loss:.4f} Acc: {tr_acc:.4f} | "
-          f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}")
-
-    if val_acc > best_val_acc:
-        best_val_acc = val_acc
+    tag = ""
+    if v_acc > best_val_acc:
+        best_val_acc = v_acc
         torch.save(model.state_dict(), str(MODELS_DIR / "classifier_best.pt"))
-        print(f"    → Best model saved (val_acc={val_acc:.4f})")
+        tag = " ★ best"
+
+    print(f"  Epoch {epoch:2d}/{TOTAL_EPOCHS} | "
+          f"Train: {t_loss:.4f} / {t_acc:.4f} | "
+          f"Val: {v_loss:.4f} / {v_acc:.4f}{tag}")
 
 # Save final model
 torch.save(model.state_dict(), str(MODELS_DIR / "classifier.pt"))
@@ -340,18 +337,21 @@ ax2.set_ylabel('Accuracy')
 ax2.legend()
 ax2.grid(True, alpha=0.3)
 
+plt.suptitle('EfficientNet-B0 — Training Curves (15-Class Insect Classification)', fontsize=13)
 plt.tight_layout()
 plt.savefig(str(RESULTS_DIR / "training_curves.png"), dpi=300, bbox_inches='tight')
 plt.show()
 plt.close()
 
 # Confusion matrix
-plt.figure(figsize=(10, 8))
+plt.figure(figsize=(14, 12))
 sns.heatmap(cm, annot=True, fmt='d', cmap='viridis',
             xticklabels=classes, yticklabels=classes)
-plt.title('Confusion Matrix (Test Set)', fontsize=14)
+plt.title('Confusion Matrix — EfficientNet-B0 (Test Set)', fontsize=14)
 plt.xlabel('Predicted')
 plt.ylabel('True')
+plt.xticks(rotation=45, ha='right')
+plt.yticks(rotation=0)
 plt.tight_layout()
 plt.savefig(str(RESULTS_DIR / "confusion_matrix.png"), dpi=300, bbox_inches='tight')
 plt.show()
@@ -362,6 +362,9 @@ precision, recall, f1, _ = precision_recall_fscore_support(test_true, test_preds
 macro_p, macro_r, macro_f1, _ = precision_recall_fscore_support(test_true, test_preds, average='macro', zero_division=0)
 
 metrics = {
+    "model": "EfficientNet-B0",
+    "num_classes": NUM_CLASSES,
+    "total_params": total_params,
     "test_loss": float(test_loss),
     "test_accuracy": float(test_acc),
     "macro_precision": float(macro_p),
@@ -412,14 +415,16 @@ alpha = 1.0 - FL_SKEW
 partitions = dirichlet_partition(train_labels, num_clients=2, alpha=max(alpha, 0.1), seed=SEED)
 
 # Plot partition distribution
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+colors = plt.cm.Set3(np.linspace(0, 1, NUM_CLASSES))
 for c_idx, (indices, ax) in enumerate(zip(partitions, axes)):
     c_labels = [train_labels[i] for i in indices]
     counts = np.bincount(c_labels, minlength=NUM_CLASSES)
-    ax.bar(classes, counts, color=['#e74c3c', '#e67e22', '#9b59b6', '#f1c40f', '#3498db'])
+    ax.bar(range(NUM_CLASSES), counts, color=colors)
     ax.set_title(f'Client {"A" if c_idx==0 else "B"} ({len(indices)} samples)', fontsize=13)
     ax.set_ylabel('Count')
-    ax.tick_params(axis='x', rotation=30)
+    ax.set_xticks(range(NUM_CLASSES))
+    ax.set_xticklabels(classes, rotation=45, ha='right', fontsize=8)
 plt.suptitle(f'Non-IID Partition (Dirichlet α={max(alpha, 0.1):.2f})', fontsize=14)
 plt.tight_layout()
 plt.savefig(str(RESULTS_DIR / "partition_distribution.png"), dpi=300, bbox_inches='tight')
@@ -445,9 +450,9 @@ print("\n=== LOCAL-ONLY ===")
 local_results = {}
 for c_idx, indices in enumerate(partitions):
     client_name = f"Client {'A' if c_idx==0 else 'B'}"
-    m = create_mobilenetv2(NUM_CLASSES, pretrained=True).to(device)
+    m = create_efficientnet_b0(NUM_CLASSES, pretrained=True).to(device)
     freeze_backbone(m)
-    unfreeze_top_layers(m, n=4)
+    unfreeze_top_layers(m, n=3)
     opt = optim.AdamW(filter(lambda p: p.requires_grad, m.parameters()), lr=LR/10, weight_decay=WEIGHT_DECAY)
 
     c_paths = [train_paths[i] for i in indices]
@@ -469,9 +474,9 @@ for c_idx, indices in enumerate(partitions):
 
 # --- Centralized Training ---
 print("\n=== CENTRALIZED ===")
-m_cent = create_mobilenetv2(NUM_CLASSES, pretrained=True).to(device)
+m_cent = create_efficientnet_b0(NUM_CLASSES, pretrained=True).to(device)
 freeze_backbone(m_cent)
-unfreeze_top_layers(m_cent, n=4)
+unfreeze_top_layers(m_cent, n=3)
 opt_cent = optim.AdamW(filter(lambda p: p.requires_grad, m_cent.parameters()), lr=LR/10, weight_decay=WEIGHT_DECAY)
 crit_cent = nn.CrossEntropyLoss()
 
@@ -487,9 +492,9 @@ torch.cuda.empty_cache()
 
 # --- Federated (FedAvg) ---
 print("\n=== FEDERATED (FedAvg) ===")
-global_model = create_mobilenetv2(NUM_CLASSES, pretrained=True).to(device)
+global_model = create_efficientnet_b0(NUM_CLASSES, pretrained=True).to(device)
 freeze_backbone(global_model)
-unfreeze_top_layers(global_model, n=4)
+unfreeze_top_layers(global_model, n=3)
 
 total_comm = 0.0
 fed_round_metrics = []
@@ -500,9 +505,9 @@ for rnd in range(1, FL_ROUNDS + 1):
     client_sizes = []
 
     for c_idx, indices in enumerate(partitions):
-        local_model = create_mobilenetv2(NUM_CLASSES, pretrained=False).to(device)
+        local_model = create_efficientnet_b0(NUM_CLASSES, pretrained=True).to(device)
         freeze_backbone(local_model)
-        unfreeze_top_layers(local_model, n=4)
+        unfreeze_top_layers(local_model, n=3)
         set_params(local_model, global_params)
 
         c_paths_fl = [train_paths[i] for i in indices]
@@ -609,12 +614,12 @@ with open(RESULTS_DIR / "comparison.csv", "w", newline='') as f:
 methods = [r["Method"] for r in rows]
 accs = [r["Accuracy"] for r in rows]
 f1s = [r["Macro-F1"] for r in rows]
-colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6']
+bar_colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6']
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 x = np.arange(len(methods))
 
-ax1.bar(x, accs, color=colors[:len(methods)], edgecolor='white', linewidth=0.5)
+ax1.bar(x, accs, color=bar_colors[:len(methods)], edgecolor='white', linewidth=0.5)
 ax1.set_xticks(x)
 ax1.set_xticklabels(methods, rotation=25, ha='right', fontsize=9)
 ax1.set_ylabel('Accuracy')
@@ -624,7 +629,7 @@ ax1.grid(axis='y', alpha=0.3)
 for i, v in enumerate(accs):
     ax1.text(i, v + 0.02, f'{v:.3f}', ha='center', fontsize=9, fontweight='bold')
 
-ax2.bar(x, f1s, color=colors[:len(methods)], edgecolor='white', linewidth=0.5)
+ax2.bar(x, f1s, color=bar_colors[:len(methods)], edgecolor='white', linewidth=0.5)
 ax2.set_xticks(x)
 ax2.set_xticklabels(methods, rotation=25, ha='right', fontsize=9)
 ax2.set_ylabel('Macro F1-Score')
@@ -634,7 +639,7 @@ ax2.grid(axis='y', alpha=0.3)
 for i, v in enumerate(f1s):
     ax2.text(i, v + 0.02, f'{v:.3f}', ha='center', fontsize=9, fontweight='bold')
 
-plt.suptitle(f'FedTrap: Local vs Centralized vs Federated (Non-IID α={max(alpha,0.1):.2f})', fontsize=14)
+plt.suptitle(f'FedTrap EfficientNet-B0: Local vs Centralized vs Federated (Non-IID α={max(alpha,0.1):.2f})', fontsize=13)
 plt.tight_layout()
 plt.savefig(str(RESULTS_DIR / "comparison.png"), dpi=300, bbox_inches='tight')
 plt.show()
@@ -667,10 +672,19 @@ if fed_round_metrics:
     ax2.legend(fontsize=8)
     ax2.grid(True, alpha=0.3)
 
+    plt.suptitle('EfficientNet-B0 — FL Convergence Over 10 Rounds', fontsize=13)
     plt.tight_layout()
     plt.savefig(str(RESULTS_DIR / "fl_convergence.png"), dpi=300, bbox_inches='tight')
     plt.show()
     plt.close()
+
+# Save all JSON results
+with open(RESULTS_DIR / "local_results.json", "w") as f:
+    json.dump(rows[:2], f, indent=2)
+with open(RESULTS_DIR / "centralized_results.json", "w") as f:
+    json.dump([rows[2]], f, indent=2)
+with open(RESULTS_DIR / "federated_results.json", "w") as f:
+    json.dump({"final": rows[3], "per_round": fed_round_metrics}, f, indent=2)
 
 # ============================================================
 # 9. Summary

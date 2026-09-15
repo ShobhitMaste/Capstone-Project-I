@@ -1,8 +1,21 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
-║  FedTrap — Cell 1: Dataset Assembly (v2 — fixed paths)       ║
+║  FedTrap — Cell 1: Dataset Assembly (EfficientNet-B0 v3)     ║
+║  Sources: AgroPest-12 + Insects Recognition                  ║
 ║  Paste this into Kaggle Notebook Cell #1                     ║
 ╚══════════════════════════════════════════════════════════════╝
+
+Merging strategy:
+  - AgroPest-12: 12 classes used directly (ants, bees, beetle, caterpillar,
+    earthworms, earwig, grasshopper, moth, slug, snail, wasp, weevil)
+  - Insects Recognition:
+      • Butterfly   → new class "butterfly"
+      • Dragonfly   → new class "dragonfly"
+      • Grasshopper → merged into existing "grasshopper"
+      • Ladybird    → merged into "beetle" (ladybirds are Coleoptera)
+      • Mosquito    → new class "mosquito"
+
+Final: 15 classes, ~9,900 images
 """
 
 import os
@@ -21,76 +34,62 @@ from sklearn.model_selection import train_test_split
 SEED = 42
 random.seed(SEED)
 
-CLASS_NAMES = ["beetle", "butterfly", "grasshopper", "honeybee", "moth"]
-PER_CLASS_LIMIT = 1000
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 WORK_DIR = Path("/kaggle/working")
 DATA_DIR = WORK_DIR / "data" / "dataset"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
-# Exact paths (from Cell 0 exploration)
+# Dataset Paths
 # ============================================================
 
-# --- Insects Recognition ---
-INSECTS_ROOT       = Path("/kaggle/input/datasets/hammaadali/insects-recognition")
-INSECTS_GRASSHOPPER = INSECTS_ROOT / "Grasshopper"       # 960 images
-INSECTS_BUTTERFLY   = INSECTS_ROOT / "Butterfly"         # 899 images
-INSECTS_LADYBIRD    = INSECTS_ROOT / "Ladybird"          # 864 images (ladybirds = beetles!)
+# --- Agricultural Pests Image Dataset (12 classes) ---
+AGPESTS_ROOT = Path("/kaggle/input/datasets/vencerlanz09/agricultural-pests-image-dataset")
 
-# --- ArTaxOr (raw images by taxonomic order) ---
-ARTAXOR_ROOT       = Path("/kaggle/input/datasets/mistag/arthropod-taxonomy-orders-object-detection-dataset")
-ARTAXOR_COLEOPTERA = ARTAXOR_ROOT / "ArTaxOr" / "Coleoptera"   # 2110 beetle images
-ARTAXOR_LEPIDOPTERA = ARTAXOR_ROOT / "ArTaxOr" / "Lepidoptera" # 2106 moth/butterfly images
+# --- Insects Recognition (5 classes) ---
+INSECTS_ROOT = Path("/kaggle/input/datasets/hammaadali/insects-recognition")
 
-# --- BeeImage ---
-BEES_ROOT          = Path("/kaggle/input/datasets/jenny18/honey-bee-annotated-images")
-BEES_IMGS          = BEES_ROOT / "bee_imgs" / "bee_imgs"        # 5172 images
+# ============================================================
+# Merge Mapping
+# ============================================================
+# Each entry: (source_path, target_class_name, description)
 
-# --- BM100 (Butterfly & Moths 100 species) ---
-BM100_ROOT         = Path("/kaggle/input/datasets/gpiosenka/butterfly-images40-species")
-BM100_TRAIN        = BM100_ROOT / "train"
-BM100_TEST         = BM100_ROOT / "test"
-BM100_VALID        = BM100_ROOT / "valid"
+AGPESTS_MAPPING = [
+    ("ants",         "ants",         "ants"),
+    ("bees",         "bees",         "bees"),
+    ("beetle",       "beetle",       "beetle"),
+    ("catterpillar", "caterpillar",  "caterpillar"),       # fix typo in dataset
+    ("earthworms",   "earthworms",   "earthworms"),
+    ("earwig",       "earwig",       "earwig"),
+    ("grasshopper",  "grasshopper",  "grasshopper"),
+    ("moth",         "moth",         "moth"),
+    ("slug",         "slug",         "slug"),
+    ("snail",        "snail",        "snail"),
+    ("wasp",         "wasp",         "wasp"),
+    ("weevil",       "weevil",       "weevil"),
+]
 
-# --- Agricultural Pests Image Dataset (class folders) ---
-AGPESTS_ROOT       = Path("/kaggle/input/datasets/vencerlanz09/agricultural-pests-image-dataset")
-AGPESTS_BEETLE     = AGPESTS_ROOT / "beetle"         # 416 images
-AGPESTS_GRASSHOPPER = AGPESTS_ROOT / "grasshopper"   # 485 images
-AGPESTS_MOTH       = AGPESTS_ROOT / "moth"           # 497 images
-AGPESTS_BEES       = AGPESTS_ROOT / "bees"           # 500 images
-
-# NOTE: AgroPest-12 (crop-pests-dataset) is YOLO detection format
-# (images/ + labels/ .txt), NOT class folders. We skip it since
-# extracting class-specific crops from YOLO format is unreliable
-# without knowing which YOLO class IDs map to our insects.
-
-# Moth keywords for BM100 heuristic
-MOTH_KEYWORDS = [
-    'moth', 'sphinx', 'hawkmoth', 'silkmoth', 'atlas', 'luna', 'cecropia',
-    'polyphemus', 'io moth', 'rosy maple', 'emperor gum', 'tiger moth',
-    'gypsy', 'codling', 'diamondback', 'armyworm', 'tussock', 'underwing',
-    'geometrid', 'cinnabar', 'clearwing', 'comet', 'garden tiger',
-    'giant leopard', 'bird cherry ermine', 'banded tiger', 'arcigera'
+INSECTS_MAPPING = [
+    ("Butterfly",    "butterfly",    "butterfly"),
+    ("Dragonfly",    "dragonfly",    "dragonfly"),
+    ("Grasshopper",  "grasshopper",  "grasshopper (merge)"),   # merge with agpests
+    ("Ladybird",     "beetle",       "ladybird → beetle"),     # ladybirds are Coleoptera
+    ("Mosquito",     "mosquito",     "mosquito"),
 ]
 
 # ============================================================
 # Helper
 # ============================================================
 
-def copy_images(src, dst, prefix, limit=None):
-    """Copy images from src → dst with renamed prefix. Respects per-class limit."""
+def copy_images(src, dst, prefix):
+    """Copy all images from src → dst with renamed prefix to avoid collisions."""
     dst.mkdir(parents=True, exist_ok=True)
-    existing = len([f for f in dst.glob("*") if f.suffix.lower() in IMAGE_EXTS])
-    if limit and existing >= limit:
-        return 0
     n = 0
+    existing = len(list(dst.glob("*")))
     for p in sorted(src.rglob("*")):
         if p.suffix.lower() in IMAGE_EXTS:
-            if limit and (existing + n) >= limit:
-                break
-            shutil.copy(p, dst / f"{prefix}_{n:05d}{p.suffix.lower()}")
+            shutil.copy(p, dst / f"{prefix}_{existing + n:05d}{p.suffix.lower()}")
             n += 1
     return n
 
@@ -98,116 +97,38 @@ def copy_images(src, dst, prefix, limit=None):
 # Assemble Dataset
 # ============================================================
 print("=" * 60)
-print("ASSEMBLING DATASET FROM 5 SOURCES")
+print("ASSEMBLING DATASET FROM 2 SOURCES")
 print("=" * 60)
 
-lim = PER_CLASS_LIMIT
 stats = defaultdict(lambda: defaultdict(int))  # stats[class][source] = count
 
 # ──────────────────────────────────────────────────────────
-# SOURCE 1: Insects Recognition
+# SOURCE 1: Agricultural Pests Image Dataset
 # ──────────────────────────────────────────────────────────
-print("\n📦 Source 1: Insects Recognition")
+print("\n📦 Source 1: Agricultural Pests Image Dataset (AgroPest-12)")
 
-if INSECTS_GRASSHOPPER.exists():
-    n = copy_images(INSECTS_GRASSHOPPER, DATA_DIR / "grasshopper", "insrec", limit=lim)
-    stats["grasshopper"]["Insects Recognition"] = n
-    print(f"   ✅ grasshopper: +{n}")
-
-if INSECTS_BUTTERFLY.exists():
-    n = copy_images(INSECTS_BUTTERFLY, DATA_DIR / "butterfly", "insrec", limit=lim)
-    stats["butterfly"]["Insects Recognition"] = n
-    print(f"   ✅ butterfly: +{n}")
-
-if INSECTS_LADYBIRD.exists():
-    n = copy_images(INSECTS_LADYBIRD, DATA_DIR / "beetle", "ladybird", limit=lim)
-    stats["beetle"]["Insects Rec. (Ladybird)"] = n
-    print(f"   ✅ beetle (from Ladybird — ladybirds are Coleoptera): +{n}")
-
-# ──────────────────────────────────────────────────────────
-# SOURCE 2: ArTaxOr (raw taxonomic images — no bbox needed)
-# ──────────────────────────────────────────────────────────
-print("\n📦 Source 2: ArTaxOr")
-
-if ARTAXOR_COLEOPTERA.exists():
-    n = copy_images(ARTAXOR_COLEOPTERA, DATA_DIR / "beetle", "artaxor_col", limit=lim)
-    stats["beetle"]["ArTaxOr Coleoptera"] = n
-    print(f"   ✅ beetle (Coleoptera raw images): +{n}")
-
-# Lepidoptera is tricky — it contains BOTH moths and butterflies mixed.
-# We'll use it as a butterfly top-up since we have BM100 for moth separation.
-if ARTAXOR_LEPIDOPTERA.exists():
-    n = copy_images(ARTAXOR_LEPIDOPTERA, DATA_DIR / "butterfly", "artaxor_lep", limit=lim)
-    stats["butterfly"]["ArTaxOr Lepidoptera"] = n
-    print(f"   ✅ butterfly (Lepidoptera raw images): +{n}")
-
-# ──────────────────────────────────────────────────────────
-# SOURCE 3: BeeImage
-# ──────────────────────────────────────────────────────────
-print("\n📦 Source 3: BeeImage")
-
-if BEES_IMGS.exists():
-    n = copy_images(BEES_IMGS, DATA_DIR / "honeybee", "beeimg", limit=lim)
-    stats["honeybee"]["BeeImage"] = n
-    print(f"   ✅ honeybee: +{n}")
-
-# ──────────────────────────────────────────────────────────
-# SOURCE 4: BM100 (Butterfly & Moths 100 species)
-#   Uses ALL splits (train + test + valid) for maximum data.
-#   Moth species identified by keyword matching.
-# ──────────────────────────────────────────────────────────
-print("\n📦 Source 4: BM100 (Butterfly & Moths 100 species)")
-
-moths_found = []
-butterflies_found = []
-moth_total = 0
-butterfly_total = 0
-
-for split_dir in [BM100_TRAIN, BM100_TEST, BM100_VALID]:
-    if not split_dir.exists():
-        continue
-    split_name = split_dir.name
-
-    for cls_dir in sorted(split_dir.iterdir()):
-        if not cls_dir.is_dir():
-            continue
-        dir_name = cls_dir.name.lower()
-        is_moth = any(kw in dir_name for kw in MOTH_KEYWORDS)
-
-        if is_moth:
-            n = copy_images(cls_dir, DATA_DIR / "moth",
-                            f"bm100_{split_name}_{cls_dir.name}", limit=lim)
-            moth_total += n
-            if cls_dir.name not in moths_found:
-                moths_found.append(cls_dir.name)
-        else:
-            n = copy_images(cls_dir, DATA_DIR / "butterfly",
-                            f"bm100_{split_name}_{cls_dir.name}", limit=lim)
-            butterfly_total += n
-            if cls_dir.name not in butterflies_found:
-                butterflies_found.append(cls_dir.name)
-
-stats["moth"]["BM100"] = moth_total
-stats["butterfly"]["BM100"] = butterfly_total
-print(f"   ✅ moth: +{moth_total} ({len(moths_found)} species)")
-print(f"      Species: {', '.join(moths_found)}")
-print(f"   ✅ butterfly: +{butterfly_total} ({len(butterflies_found)} species)")
-
-# ──────────────────────────────────────────────────────────
-# SOURCE 5: Agricultural Pests Image Dataset
-# ──────────────────────────────────────────────────────────
-print("\n📦 Source 5: Agricultural Pests Image Dataset")
-
-for src_path, cls, label in [
-    (AGPESTS_BEETLE,      "beetle",      "beetle"),
-    (AGPESTS_GRASSHOPPER, "grasshopper", "grasshopper"),
-    (AGPESTS_MOTH,        "moth",        "moth"),
-    (AGPESTS_BEES,        "honeybee",    "bees→honeybee"),
-]:
+for src_folder, target_class, desc in AGPESTS_MAPPING:
+    src_path = AGPESTS_ROOT / src_folder
     if src_path.exists():
-        n = copy_images(src_path, DATA_DIR / cls, f"agpests_{src_path.name}", limit=lim)
-        stats[cls]["Agricultural Pests"] = n
-        print(f"   ✅ {label}: +{n}")
+        n = copy_images(src_path, DATA_DIR / target_class, f"agpest_{src_folder}")
+        stats[target_class]["AgroPest-12"] += n
+        print(f"   ✅ {desc}: +{n} images → {target_class}/")
+    else:
+        print(f"   ❌ {src_folder} not found!")
+
+# ──────────────────────────────────────────────────────────
+# SOURCE 2: Insects Recognition
+# ──────────────────────────────────────────────────────────
+print("\n📦 Source 2: Insects Recognition")
+
+for src_folder, target_class, desc in INSECTS_MAPPING:
+    src_path = INSECTS_ROOT / src_folder
+    if src_path.exists():
+        n = copy_images(src_path, DATA_DIR / target_class, f"insrec_{src_folder.lower()}")
+        stats[target_class]["Insects Recognition"] += n
+        print(f"   ✅ {desc}: +{n} images → {target_class}/")
+    else:
+        print(f"   ❌ {src_folder} not found!")
 
 # ============================================================
 # Per-source breakdown
@@ -215,7 +136,9 @@ for src_path, cls, label in [
 print("\n" + "=" * 60)
 print("PER-SOURCE BREAKDOWN")
 print("=" * 60)
-for cls in CLASS_NAMES:
+
+all_classes = sorted(stats.keys())
+for cls in all_classes:
     print(f"\n  {cls.upper()}:")
     cls_total = 0
     for source, count in stats[cls].items():
@@ -231,6 +154,7 @@ print("VALIDATING & CLEANING IMAGES")
 print("=" * 60)
 
 classes = sorted([d.name for d in DATA_DIR.iterdir() if d.is_dir()])
+NUM_CLASSES = len(classes)
 class_to_idx = {cls: idx for idx, cls in enumerate(classes)}
 
 valid_images = []
@@ -287,12 +211,12 @@ with open(meta_path, "w") as f:
     json.dump(split_metadata, f, indent=2)
 
 with open(WORK_DIR / "data" / "class_mapping.json", "w") as f:
-    json.dump({"class_to_idx": class_to_idx, "classes": classes}, f, indent=2)
+    json.dump({"class_to_idx": class_to_idx, "classes": classes, "num_classes": NUM_CLASSES}, f, indent=2)
 
 # ============================================================
 # Final Summary
 # ============================================================
-print(f"\n  Classes: {classes}")
+print(f"\n  Classes ({NUM_CLASSES}): {classes}")
 print(f"  Mapping: {class_to_idx}")
 print(f"\n  {'Class':15s} | {'Total':>6s} | {'Train':>6s} | {'Val':>5s} | {'Test':>5s}")
 print(f"  {'-'*15}-+-{'-'*6}-+-{'-'*6}-+-{'-'*5}-+-{'-'*5}")
@@ -314,9 +238,9 @@ print(f"\n  Saved: {meta_path}")
 
 # ============================================================
 print("\n" + "=" * 60)
-print("✅ ✅ ✅  IMPORT COMPLETED  ✅ ✅ ✅")
+print("✅ ✅ ✅  DATASET ASSEMBLY COMPLETED  ✅ ✅ ✅")
 print("=" * 60)
 print(f"\n  Total valid images: {total_all}")
-print(f"  Classes: {len(classes)}")
+print(f"  Classes: {NUM_CLASSES}")
 print(f"  Train: {len(train_paths)} | Val: {len(val_paths)} | Test: {len(test_paths)}")
-print(f"\n  → Now run Cell 2 to start training!")
+print(f"\n  → Now run Cell 2 to start EfficientNet-B0 training!")

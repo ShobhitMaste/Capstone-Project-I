@@ -100,3 +100,6 @@ data/kaggle/
 *.tar
 *.rar
 *.7z
+
+YOLO11n/
+DownloadedFromNet/
