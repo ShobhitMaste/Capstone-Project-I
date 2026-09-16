@@ -1,0 +1,32 @@
+You are an expert presentation designer and academic technical writer. I am a B.Tech CSE (AI & Robotics) final year student. I need you to write the exact slide-by-slide content for my "Review 3" project presentation. 
+
+Project Name: FedTrap
+Concept: A smart IoT insect trap that uses computer vision (Raspberry Pi, Pi Camera) to classify agricultural pests and uses Federated Learning to train globally across multiple traps without sharing raw image data (preserving bandwidth and privacy).
+
+Context for Review 3:
+- Review 3 requires us to show 50% project completion, interim results, and technical problem-solving.
+- We have successfully built and trained our final computer vision model.
+- We have a working Python script that uses a webcam, detects motion using contours, crops the insect, and runs the AI model live with bounding boxes.
+- We have successfully run a Federated Learning simulation using the FedAvg algorithm to prove the architecture works before we deploy it to physical Raspberry Pis for Review 4.
+
+Model Details (Incorporate these technical points into the slides to impress the judges):
+- Dataset: Merged "Agricultural Pests Image Dataset" (12 classes from Flickr) and "Insects Recognition" dataset (5 classes from Google/iStock) into a unified 15 distinct classes (~9,900 images). Mapped classes intelligently (e.g., Ladybirds merged into Beetles).
+- Preprocessing: RandomResizedCrop(224), ColorJitter, RandomHorizontalFlip, and ImageNet normalization. 
+- Overcoming Imbalance: Used Weighted Cross-Entropy Loss to handle class imbalances.
+- Architecture: EfficientNet-B0 (chosen for Edge AI efficiency - only 5.3M parameters).
+- Transfer Learning: Used a Two-Phase approach. Phase 1 (10 epochs) froze the backbone to train a custom 15-class head. Phase 2 (20 epochs) unfroze the top 3 blocks for fine-tuning.
+- Federated Simulation: Simulated 2 clients with Non-IID data (Dirichlet partition) to prove the model can learn even if Trap A sees different insects than Trap B. Extracted a global `federated_best.pt` model via FedAvg.
+
+Please structure the presentation as follows:
+Slide 1: Title Slide
+Slide 2: Recap of Problem Statement & Proposed Solution
+Slide 3: Current Status (50% Completion Milestone)
+Slide 4: Dataset Engineering & Merging
+Slide 5: Model Architecture (EfficientNet-B0) & Training Strategy
+Slide 6: Overcoming Technical Challenges (Class Imbalance & Lighting Variations)
+Slide 7: Federated Learning Simulation (FedAvg)
+Slide 8: Live System Demonstration (Webcam + Smart Cropping)
+Slide 9: Interim Results & Accuracy Metrics
+Slide 10: Next Steps (Review 4: Physical deployment to Raspberry Pi and Flower framework)
+
+Make the bullet points concise, highly technical, and professional. Include speaker notes for each slide so I know exactly what to say to the panel of judges.

@@ -1,0 +1,25 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║                FedTrap — Review 3 Summary                    ║
+╚══════════════════════════════════════════════════════════════╝
+
+Model Architecture:     EfficientNet-B0 (ImageNet-pretrained)
+Input Resolution:       224 x 224 x 3
+Number of Classes:      15
+Total Parameters:       4,026,763
+
+Dataset:
+  Total Images:          9943
+  Train / Val / Test:    6960 / 1491 / 1492
+  Sources:               AgroPest-12 + Insects Recognition (merged)
+
+Results:
+  Test Accuracy:         92.23%
+  Macro Precision:       92.25%
+  Macro Recall:          92.37%
+  Macro F1-Score:        92.22%
+
+Federated Learning:
+  Algorithm:             FedAvg (Federated Averaging)
+  Clients:               2 (simulated non-IID partitions)
+  Data Heterogeneity:    Dirichlet α=0.20
